@@ -2,8 +2,9 @@
 #ifndef JCLIB_OPENGL_GL_HPP
 #define JCLIB_OPENGL_GL_HPP
 
-#include "gl/glsym.h"
 #include "glenum.hpp"
+
+#include <glad/glad.h>
 
 #include <jclib/type.h>
 #include <jclib/optional.h>
