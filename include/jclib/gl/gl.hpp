@@ -2,395 +2,60 @@
 #ifndef JCLIB_OPENGL_GL_HPP
 #define JCLIB_OPENGL_GL_HPP
 
-#include "gl/glsym.h"
+#include "gllib.hpp"
+#include "globject.hpp"
 #include "glenum.hpp"
 
 #include <jclib/type.h>
+#include <jclib/ranges.h>
+#include <jclib/concepts.h>
 #include <jclib/optional.h>
 #include <jclib/algorithm.h>
+#include <jclib/type_traits.h>
 
 #define _JCLIB_OPENGL_GL_ 
 
 #include <span>
+#include <tuple>
+#include <string>
 #include <format>
 #include <compare>
 #include <iostream>
 #include <charconv>
+#include <string_view>
+
+
+
+// TODO : Move the below macros into jclib
+
+/**
+ * Defines a full specialization of a type trait class template and adds a member alias named "type" set to "_type"
+ * 
+ * @param _typetrait The class template to specialize.
+ * @param _type Type to alias for the member alias "type".
+ * @param ... Template specialization arguements.
+*/
+#define JCLIB_FULL_SPECIALIZE_CLASS_WITH_TYPE(typetrait, _type, ...) template <> \
+struct typetrait < __VA_ARGS__ > \
+{ \
+	using type = _type;\
+}
+
+/**
+ * Defines a full specialization of a type trait class template and inherits from the type "_parent".
+ *
+ * @param _typetrait The class template to specialize.
+ * @param _parent Type to inherit from for the specialization.
+ * @param ... Template specialization arguements.
+*/
+#define JCLIB_FULL_SPECIALIZE_CLASS_WITH_PARENT(typetrait, _parent, ...)template <> \
+struct typetrait < __VA_ARGS__ > : public _parent \
+{}
+
+
 
 namespace jc::gl
 {
-
-	/**
-	 * @brief Traits type for describing how OpenGL objects can be interacted with
-	*/
-	template <object_type Type>
-	struct object_traits;
-
-
-
-	template <object_type Type>
-	struct object_id
-	{
-	public:
-		using traits_type = object_traits<Type>;
-		using value_type = typename traits_type::value_type;
-
-	private:
-
-		constexpr value_type& value() noexcept { return this->value_; };
-		constexpr const value_type& value() const noexcept { return this->value_; };
-
-	public:
-
-		constexpr value_type get() const noexcept { return this->value(); };
-		constexpr explicit operator value_type() const noexcept { return this->get(); };
-
-		constexpr bool good() const noexcept
-		{
-			return this->get() != traits_type::null();
-		};
-		constexpr explicit operator bool() const noexcept
-		{
-			return this->good();
-		};
-
-		friend constexpr inline auto operator<=>(const object_id& lhs, const object_id& rhs) noexcept = default;
-
-		constexpr object_id() = default;
-		constexpr explicit object_id(value_type _value) :
-			value_{ _value }
-		{
-#if	JCLIB_DEBUG_V
-			if (this->good())
-			{
-				if (!traits_type::check(this->get()))
-				{
-					JCLIB_ABORT();
-				};
-			};
-#endif
-		};
-
-		constexpr object_id(jc::null_t) noexcept :
-			value_{ traits_type::null() }
-		{};
-		constexpr object_id& operator=(jc::null_t) noexcept
-		{
-			this->value() = traits_type::null();
-			return *this;
-		};
-
-	private:
-		value_type value_;
-	};
-
-
-
-	/**
-	 * @brief Shader type values for OpenGL shader objects
-	*/
-	enum class shader_type : GLenum
-	{
-		vertex = GL_VERTEX_SHADER,
-		fragment = GL_FRAGMENT_SHADER,
-		geometry = GL_GEOMETRY_SHADER,
-		compute = GL_COMPUTE_SHADER,
-		tesselation_control = GL_TESS_CONTROL_SHADER,
-		tesselation_evaluation = GL_TESS_EVALUATION_SHADER,
-	};
-
-	template <>
-	struct object_traits<object_type::shader>
-	{
-		using value_type = ::GLuint;
-
-		static value_type create(shader_type _type)
-		{
-			return glCreateShader(jc::to_underlying(_type));
-		};
-		static void destroy(value_type _value)
-		{
-			glDeleteShader(_value);
-		};
-		static bool check(const value_type& _value)
-		{
-			return glIsShader(_value);
-		};
-		constexpr static value_type null()
-		{
-			return value_type{ 0 };
-		};
-	};
-	using shader_traits = object_traits<object_type::shader>;
-
-	template <>
-	struct object_traits<object_type::program>
-	{
-		using value_type = GLuint;
-		static value_type create()
-		{
-			return glCreateProgram();
-		};
-		static void destroy(value_type _value)
-		{
-			glDeleteProgram(_value);
-			_value = 0;
-		};
-		static bool check(const value_type& _value)
-		{
-			return glIsProgram(_value);
-		};
-		constexpr static value_type null()
-		{
-			return value_type{ 0 };
-		};
-
-		static void bind(const value_type& _value)
-		{
-			glUseProgram(_value);
-		};
-		static bool is_bound(const value_type& _value)
-		{
-			GLint _active;
-			glGetIntegerv(GL_CURRENT_PROGRAM, &_active);
-			return static_cast<GLint>(_value) == _active;
-		};
-	};
-	using program_traits = object_traits<object_type::program>;
-
-	template <>
-	struct object_traits<object_type::vao>
-	{
-		using value_type = GLuint;
-		static value_type create()
-		{
-			value_type _value;
-			glCreateVertexArrays(1, &_value);
-			return _value;
-		};
-		static void destroy(value_type _value)
-		{
-			glDeleteVertexArrays(1, &_value);
-			_value = 0;
-		};
-		static bool check(const value_type& _value)
-		{
-			return glIsVertexArray(_value);
-		};
-		constexpr static value_type null()
-		{
-			return value_type{ 0 };
-		};
-
-		static void bind(const value_type& _value)
-		{
-			glBindVertexArray(_value);
-		};
-		static bool is_bound(const value_type& _value)
-		{
-			GLint _active;
-			glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &_active);
-			return static_cast<GLint>(_value) == _active;
-		};
-	};
-	using vao_traits = object_traits<object_type::vao>;
-
-	template <>
-	struct object_traits<object_type::program_pipeline>
-	{
-		using value_type = GLuint;
-		static value_type create()
-		{
-			value_type _out;
-			glCreateProgramPipelines(1, &_out);
-			return _out;
-		};
-		static void destroy(value_type _value)
-		{
-			glDeleteProgramPipelines(1, &_value);
-			_value = 0;
-		};
-		static bool check(const value_type& _value)
-		{
-			return glIsProgramPipeline(_value);
-		};
-		constexpr static value_type null()
-		{
-			return value_type{ 0 };
-		};
-
-		static void bind(const value_type& _value)
-		{
-			glUseProgram(0);
-			glBindProgramPipeline(_value);
-		};
-		static bool is_bound(const value_type& _value)
-		{
-			GLint _active;
-			glGetIntegerv(GL_PROGRAM_PIPELINE_BINDING, &_active);
-			return static_cast<GLint>(_value) == _active;
-		};
-	};
-	using program_pipeline_traits = object_traits<object_type::program_pipeline>;
-
-	/**
-	 * @brief Targets that a texture can use or bind to
-	*/
-	enum class texture_target : GLenum
-	{
-		tex1D = GL_TEXTURE_1D,
-		array1D = GL_TEXTURE_1D_ARRAY,
-		tex2D = GL_TEXTURE_2D,
-		array2D = GL_TEXTURE_2D_ARRAY,
-		tex3D = GL_TEXTURE_3D,
-		rectangle = GL_TEXTURE_RECTANGLE,
-		cube_map = GL_TEXTURE_CUBE_MAP,
-		cube_map_array = GL_TEXTURE_CUBE_MAP_ARRAY,
-		buffer = GL_TEXTURE_BUFFER,
-		multisample = GL_TEXTURE_2D_MULTISAMPLE,
-		mutisample_array = GL_TEXTURE_2D_MULTISAMPLE_ARRAY
-	};
-
-	/**
-	 * @brief Traits type for OpenGL texture objects
-	*/
-	template <>
-	struct object_traits<object_type::texture>
-	{
-		using value_type = GLuint;
-
-		/**
-		 * @brief Creates a new texture
-		 * @param _target Target to create texture with
-		 * @return Vaild owning texture ID
-		*/
-		JCLIB_NODISCARD("owning ID") static value_type create(texture_target _target)
-		{
-			value_type _out;
-			glCreateTextures(jc::to_underlying(_target), 1, &_out);
-			return _out;
-		};
-		static void destroy(value_type _value)
-		{
-			glDeleteTextures(1, &_value);
-		};
-		static bool check(const value_type& _value)
-		{
-			return glIsTexture(_value);
-		};
-		constexpr static value_type null()
-		{
-			return value_type{ 0 };
-		};
-
-		static void bind(const value_type& _value, const texture_target& _target)
-		{
-			glBindTexture(jc::to_underlying(_target), _value);
-		};
-	};
-
-	/**
-	 * @brief Traits type for OpenGL texture objects
-	*/
-	using texture_traits = object_traits<object_type::texture>;
-
-
-	/**
-	 * @brief Enumerates targets that a vbo can be bound to
-	*/
-	enum class vbo_target : GLenum
-	{
-#if defined(GL_ARRAY_BUFFER)
-		array = GL_ARRAY_BUFFER,
-#endif
-#if defined(GL_ATOMIC_COUNTER_BUFFER)
-		atomic_counter = GL_ATOMIC_COUNTER_BUFFER,
-#endif
-#if defined(GL_COPY_READ_BUFFER)
-		copy_read = GL_COPY_READ_BUFFER,
-#endif
-#if defined(GL_COPY_WRITE_BUFFER)
-		copy_write = GL_COPY_WRITE_BUFFER,
-#endif
-#if defined(GL_DISPATCH_INDIRECT_BUFFER)
-		dispatch_indirect = GL_DISPATCH_INDIRECT_BUFFER,
-#endif
-#if defined(GL_DRAW_INDIRECT_BUFFER)
-		draw_indirect = GL_DRAW_INDIRECT_BUFFER,
-#endif
-#if defined(GL_ELEMENT_ARRAY_BUFFER)
-		element_array = GL_ELEMENT_ARRAY_BUFFER,
-#endif
-#if defined(GL_PIXEL_PACK_BUFFER)
-		pixel_pack = GL_PIXEL_PACK_BUFFER,
-#endif
-#if defined(GL_PIXEL_UNPACK_BUFFER)
-		pixel_unpack = GL_PIXEL_UNPACK_BUFFER,
-#endif
-#if defined(GL_QUERY_BUFFER)
-		query = GL_QUERY_BUFFER,
-#endif
-#if defined(GL_SHADER_STORAGE_BUFFER)
-		shader_storage = GL_SHADER_STORAGE_BUFFER,
-#endif
-#if defined(GL_TEXTURE_BUFFER)
-		texture = GL_TEXTURE_BUFFER,
-#endif
-#if defined(GL_TRANSFORM_FEEDBACK_BUFFER)
-		transform_feedback = GL_TRANSFORM_FEEDBACK_BUFFER,
-#endif
-#if defined(GL_UNIFORM_BUFFER)
-		uniform = GL_UNIFORM_BUFFER,
-#endif
-	};
-
-	enum class vbo_usage : GLenum
-	{
-		static_draw = GL_STATIC_DRAW,
-		static_copy = GL_STATIC_COPY,
-		static_read = GL_STATIC_READ,
-
-		stream_draw = GL_STREAM_READ,
-		stream_copy = GL_STREAM_COPY,
-		stream_read = GL_STREAM_READ,
-
-		dynamic_draw = GL_DYNAMIC_READ,
-		dynamic_copy = GL_DYNAMIC_COPY,
-		dynamic_read = GL_DYNAMIC_READ,
-	};
-
-
-	template <>
-	struct object_traits<object_type::vbo>
-	{
-		using value_type = GLuint;
-
-		static value_type create()
-		{
-			value_type _value;
-			glCreateBuffers(1, &_value);
-			return _value;
-		};
-		static void destroy(value_type _value)
-		{
-			glDeleteBuffers(1, &_value);
-			_value = 0;
-		};
-		static bool check(const value_type& _value)
-		{
-			return glIsBuffer(_value);
-		};
-		constexpr static value_type null()
-		{
-			return value_type{ 0 };
-		};
-
-		static void bind(const value_type& _value, vbo_target _target)
-		{
-			glBindBuffer(jc::to_underlying(_target), _value);
-		};
-	};
-	using vbo_traits = object_traits<object_type::vbo>;
 
 
 	/**
@@ -422,6 +87,168 @@ namespace jc::gl
 	 * @brief Invariant for storing OpenGL texture object IDs
 	*/
 	using texture_id = object_id<object_type::texture>;
+
+
+	namespace gl_impl
+	{
+		// Converts a parameter type to a target type for that parameter
+		template <typename T>
+		struct parameter_target_type;
+
+		// Converts a parameter type to a target type for that parameter
+		template <typename T>
+		using parameter_target_type_t = typename parameter_target_type<T>::type;
+		
+		JCLIB_FULL_SPECIALIZE_CLASS_WITH_TYPE(parameter_target_type, texture_target, texture_parameter);
+		
+
+
+		/**
+		 * @brief Helper type for constant object type values
+		 * @param _value OpenGL object type value
+		*/
+		template <object_type T>
+		using object_type_constant = std::integral_constant<object_type, T>;
+
+		/**
+		 * @brief Converts a parameter type into object type value for said parameter
+		*/
+		template <typename T>
+		struct parameter_object_type;
+		
+		JCLIB_FULL_SPECIALIZE_CLASS_WITH_PARENT(parameter_object_type, object_type_constant<object_type::texture>,	texture_parameter);
+		JCLIB_FULL_SPECIALIZE_CLASS_WITH_PARENT(parameter_object_type, object_type_constant<object_type::shader>,	shader_parameter);
+		JCLIB_FULL_SPECIALIZE_CLASS_WITH_PARENT(parameter_object_type, object_type_constant<object_type::program>,	program_parameter);
+
+		/**
+		 * @brief Converts a target type into object type value for said target
+		*/
+		template <typename T>
+		struct target_object_type;
+
+		JCLIB_FULL_SPECIALIZE_CLASS_WITH_PARENT(target_object_type, object_type_constant<object_type::texture>, texture_target);
+		JCLIB_FULL_SPECIALIZE_CLASS_WITH_PARENT(target_object_type, object_type_constant<object_type::vbo>,		vbo_target);
+		
+
+
+
+		template <object_type T, typename ValueT, typename Enable = void>
+		struct has_get : jc::false_type
+		{};
+
+		template <object_type T, typename ValueT>
+		struct has_get<T, ValueT, jc::void_t
+		<
+			decltype(object_traits<T>::get
+			(
+				std::declval<object_value_t<T>>(),
+				std::declval<object_parameter_t<T>>(),
+				std::declval<std::span<ValueT>>()
+			))
+		>> :
+			jc::true_type
+		{};
+
+
+#if JCLIB_FEATURE_CONCEPTS_V
+		template <object_type T, typename ValueT>
+		concept cx_has_get = requires (const object_value_t<T>& _object, object_parameter_t<T> _param, std::span<ValueT> _values)
+		{
+			object_traits<T>::get(_object, _param, _values);
+		};
+#endif
+	};
+
+	/**
+	 * @brief Type trait for determining if a type is a target type enum.
+	 * @tparam T Type to check.
+	*/
+	template <typename T>
+	struct is_target_type :
+		jc::false_type
+	{};
+	
+	JCLIB_FULL_SPECIALIZE_CLASS_WITH_PARENT(is_target_type, jc::true_type, texture_target);
+	JCLIB_FULL_SPECIALIZE_CLASS_WITH_PARENT(is_target_type, jc::true_type, vbo_target);
+
+
+#if JCLIB_FEATURE_INLINE_VARIABLES_V
+	/**
+	 * @brief Type trait for determining if a type is a target type enum.
+	 * @tparam T Type to check.
+	*/
+	template <typename T>
+	constexpr inline auto is_target_type_v = is_target_type<T>::value;
+#endif
+
+	/**
+	 * @brief Gets the value(s) of a parameter for an OpenGL object.
+	 * 
+	 * @tparam Type Object type enum value.
+	 * @tparam ValueT Parameter value type.
+	 * 
+	 * @param _object Object to get parameter values from.
+	 * @param _param Parameter to get.
+	 * @param _values Output variable for where to write the parameter value(s) to.
+	*/
+	template <object_type Type, typename ValueT, size_t Extent>
+	JCLIB_REQUIRES
+	((
+		gl_impl::cx_has_get<Type, ValueT>
+	))
+	inline auto get(const object_id<Type>& _object, object_parameter_t<Type> _param, std::span<ValueT, Extent> _values) ->
+		JCLIB_RET_SFINAE_CXSWITCH(void, gl_impl::has_get<Type, ValueT>::value)
+	{
+		object_traits<Type>::get(_object.get(), _param, _values);
+	};
+
+
+	/**
+	 * @brief Gets the value(s) of a parameter for an OpenGL object.
+	 *
+	 * @tparam Type Object type enum value.
+	 * @tparam ValueT Parameter value type.
+	 *
+	 * @param _object Object to get parameter values from.
+	 * @param _param Parameter to get, parameter MUST only have a single value associated with it.
+	 *
+	 * @return The value of the parameter.
+	*/
+	template <typename ValueT = GLint, object_type Type>
+	JCLIB_REQUIRES((gl_impl::cx_has_get<Type, ValueT>))
+	inline auto get(const object_id<Type>& _object, object_parameter_t<Type> _param) ->
+		JCLIB_RET_SFINAE_CXSWITCH(ValueT, gl_impl::has_get<Type, ValueT>::value)
+	{
+		ValueT _value{};
+		get(_object, _param, std::span<ValueT>{ &_value, 1 });
+		return _value;
+	};
+
+
+
+	/**
+	 * @brief Gets the value(s) of a parameter for an OpenGL object bound to a target.
+	 *
+	 * @tparam TargetT Target type for the object being accessed.
+	 * @tparam ValueT Parameter value type.
+	 *
+	 * @param _target Target the object is bound to.
+	 * @param _param Parameter to get.
+	 * @param _values Output variable for where to write the parameter value(s) to.
+	*/
+	template <typename TargetT, typename ValueT, size_t Extent>
+	JCLIB_REQUIRES
+	((
+		gl_impl::cx_has_get<gl_impl::target_object_type<TargetT>::value, ValueT>
+	))
+	inline auto get(const TargetT& _target, gl_impl::parameter_target_type_t<TargetT> _param, std::span<ValueT, Extent> _values) ->
+		JCLIB_RET_SFINAE_CXSWITCH(void, gl_impl::has_get<gl_impl::target_object_type<TargetT>::value, ValueT>::value)
+	{
+		object_traits<gl_impl::target_object_type<TargetT>::value>::get(_target, _param, _values);
+	};
+
+
+
 
 
 	template <object_type Type, typename... ArgTs> requires requires(ArgTs&&... _args)
@@ -473,7 +300,8 @@ namespace jc::gl
 		{ object_traits<Type>::destroy(_value) } -> jc::cx_same_as<void>;
 		{ object_traits<Type>::check(_value) } -> jc::cx_convertible_to<bool>;
 	}
-	struct unique_object
+	struct unique_object :
+		gl_impl::object_interface<Type, unique_object<Type>>
 	{
 	public:
 
@@ -588,6 +416,30 @@ namespace jc::gl
 	using unique_texture = unique_object<object_type::texture>;
 
 
+	// Helper functions for ease of use
+
+	inline unique_shader new_shader(shader_type _type)
+	{
+		return unique_shader{ create<object_type::shader>(_type) };
+	};
+	inline unique_program new_program()
+	{
+		return unique_program{ create<object_type::program>() };
+	};
+	inline unique_vao new_vao()
+	{
+		return unique_vao{ create<object_type::vao>() };
+	};
+	inline unique_vbo new_vbo()
+	{
+		return unique_vbo{ create<object_type::vbo>() };
+	};
+	inline unique_texture new_texture(texture_target _target)
+	{
+		return unique_texture{ create<object_type::texture>(_target) };
+	};
+
+
 
 	template <object_type Type>
 	inline void destroy(unique_object<Type>& _value)
@@ -611,21 +463,6 @@ namespace jc::gl
 		decltype(bind(_obj.id(), std::forward<ArgTs>(_args)...))
 	{
 		return bind(_obj.id(), std::forward<ArgTs>(_args)...);
-	};
-
-
-
-
-	template <std::ranges::contiguous_range RangeT>
-	inline void buffer_data(const vbo_id& _vbo, const RangeT& _data, vbo_usage _usage = vbo_usage::static_draw)
-	{
-		glNamedBufferData
-		(
-			_vbo.get(),
-			std::ranges::size(_data) * sizeof(jc::ranges::value_t<RangeT>),
-			std::ranges::data(_data),
-			jc::to_underlying(_usage)
-		);
 	};
 
 
@@ -664,44 +501,8 @@ namespace jc::gl
 #if GL_VERSION_4_3
 
 	using resource_location = gl_impl::integer_invariant<GLuint, struct resource_location_tag>;
-	enum class resource_type
-	{
-#if defined(GL_UNIFORM)
-		uniform = GL_UNIFORM,
-#endif
-#if defined(GL_PROGRAM_INPUT)
-		program_input = GL_PROGRAM_INPUT,
-#endif
-#if defined(GL_PROGRAM_OUTPUT)
-		program_output = GL_PROGRAM_OUTPUT,
-#endif
-#if defined(GL_VERTEX_SUBROUTINE_UNIFORM)
-		vertex_subroutine_uniform = GL_VERTEX_SUBROUTINE_UNIFORM,
-#endif
-#if defined(GL_TESS_CONTROL_SUBROUTINE_UNIFORM)
-		tess_control_subroutine_uniform = GL_TESS_CONTROL_SUBROUTINE_UNIFORM,
-#endif
-#if defined(GL_TESS_EVALUATION_SUBROUTINE_UNIFORM)
-		tess_evaluation_subroutine_uniform = GL_TESS_EVALUATION_SUBROUTINE_UNIFORM,
-#endif
-#if defined(GL_GEOMETRY_SUBROUTINE_UNIFORM)
-		geometry_subroutine_uniform = GL_GEOMETRY_SUBROUTINE_UNIFORM,
-#endif
-#if defined(GL_FRAGMENT_SUBROUTINE_UNIFORM)
-		fragment_subroutine_uniform = GL_FRAGMENT_SUBROUTINE_UNIFORM,
-#endif
-#if defined(GL_COMPUTE_SUBROUTINE_UNIFORM)
-		compute_subroutine_uniform = GL_COMPUTE_SUBROUTINE_UNIFORM,
-#endif
-#if defined(GL_TRANSFORM_FEEDBACK_BUFFER)
-		transform_feedback_buffer = GL_TRANSFORM_FEEDBACK_BUFFER,
-#endif
-#if defined(GL_UNIFORM_BLOCK)
-		uniform_block = GL_UNIFORM_BLOCK,
-#endif
-	};
 
-	inline jc::optional<resource_location> get_program_resource_location(const program_id& _program, resource_type _resourceType, const GLchar* _name)
+	inline jc::optional<resource_location> get_resource_location(const program_id& _program, resource_type _resourceType, const GLchar* _name)
 	{
 		JCLIB_ASSERT(_name != null);
 		const auto _location = glGetProgramResourceLocation(_program.get(), jc::to_underlying(_resourceType), _name);
@@ -757,7 +558,7 @@ namespace jc::gl
 		using parent_type::parent_type;
 		using parent_type::operator=;
 	};
-
+	
 
 	inline void bind_vertex_buffer(vertex_binding_index _buffer, const vbo_id& _vbo, GLintptr _offsetBytes, GLsizei _strideBytes)
 	{
@@ -781,67 +582,6 @@ namespace jc::gl
 		glEnableVertexAttribArray(_index.get());
 	};
 
-
-	/**
-	 * @brief Enumerates the opengl type codes (ie. GL_FLOAT as a "typecode" for the floating point type)
-	*/
-	enum class typecode : GLenum
-	{
-		gl_float = GL_FLOAT,
-		gl_double = GL_DOUBLE,
-
-		gl_int = GL_INT,
-		gl_unsigned_int = GL_UNSIGNED_INT,
-
-		gl_short = GL_SHORT,
-		gl_unsigned_short = GL_UNSIGNED_SHORT,
-
-		gl_byte = GL_BYTE,
-		gl_unsigned_byte = GL_UNSIGNED_BYTE,
-
-
-		gl_int_vec2 = GL_INT_VEC2,
-		gl_int_vec3 = GL_INT_VEC3,
-		gl_int_vec4 = GL_INT_VEC4,
-
-		gl_unsigned_int_vec2 = GL_UNSIGNED_INT_VEC2,
-		gl_unsigned_int_vec3 = GL_UNSIGNED_INT_VEC3,
-		gl_unsigned_int_vec4 = GL_UNSIGNED_INT_VEC4,
-
-		gl_float_vec2 = GL_FLOAT_VEC2,
-		gl_float_vec3 = GL_FLOAT_VEC3,
-		gl_float_vec4 = GL_FLOAT_VEC4,
-
-		gl_double_vec2 = GL_DOUBLE_VEC2,
-		gl_double_vec3 = GL_DOUBLE_VEC3,
-		gl_double_vec4 = GL_DOUBLE_VEC4,
-
-		gl_float_mat2	= GL_FLOAT_MAT2,
-		gl_float_mat3x2 = GL_FLOAT_MAT3x2,
-		gl_float_mat2x3 = GL_FLOAT_MAT2x3,
-		gl_float_mat3	= GL_FLOAT_MAT3,
-		gl_float_mat3x4 = GL_FLOAT_MAT3x4,
-		gl_float_mat4x3 = GL_FLOAT_MAT4x3,
-		gl_float_mat2x4 = GL_FLOAT_MAT2x4,
-		gl_float_mat4x2 = GL_FLOAT_MAT4x2,
-		gl_float_mat4	= GL_FLOAT_MAT4,
-
-		gl_double_mat2	= GL_DOUBLE_MAT2,
-		gl_double_mat3x2 = GL_DOUBLE_MAT3x2,
-		gl_double_mat2x3 = GL_DOUBLE_MAT2x3,
-		gl_double_mat3	= GL_DOUBLE_MAT3,
-		gl_double_mat3x4 = GL_DOUBLE_MAT3x4,
-		gl_double_mat4x3 = GL_DOUBLE_MAT4x3,
-		gl_double_mat2x4 = GL_DOUBLE_MAT2x4,
-		gl_double_mat4x2 = GL_DOUBLE_MAT4x2,
-		gl_double_mat4	= GL_DOUBLE_MAT4,
-
-		gl_sampler_1D = GL_SAMPLER_1D,
-		gl_sampler_2D = GL_SAMPLER_2D,
-		gl_sampler_3D = GL_SAMPLER_3D,
-		gl_sampler_1D_array = GL_SAMPLER_1D_ARRAY,
-		gl_sampler_2D_array = GL_SAMPLER_2D_ARRAY,
-	};
 
 	/**
 	 * @brief Gets the name string of an opengl type code
@@ -1001,17 +741,6 @@ namespace jc::gl
 
 
 
-	enum class buffer_bit : GLbitfield
-	{
-		color = GL_COLOR_BUFFER_BIT,
-		depth = GL_DEPTH_BUFFER_BIT,
-		stencil = GL_STENCIL_BUFFER_BIT
-	};
-
-	constexpr inline buffer_bit operator|(const buffer_bit& lhs, const buffer_bit& rhs) noexcept
-	{
-		return static_cast<buffer_bit>(jc::to_underlying(lhs) | jc::to_underlying(rhs));
-	};
 
 	inline void clear(buffer_bit _mask)
 	{
@@ -1020,56 +749,540 @@ namespace jc::gl
 
 
 
-	enum class primitive : GLenum
+};
+
+
+#pragma region VAO
+
+namespace jc::gl
+{
+	inline void draw_arrays(primitive _mode, size_t _count, size_t _first = 0)
 	{
-#if defined(GL_POINTS)
-		points = GL_POINTS,
-#endif
-#if defined(GL_LINE_STRIP)
-		line_strip = GL_LINE_STRIP,
-#endif
-#if defined(GL_LINE_LOOP)
-		line_loop = GL_LINE_LOOP,
-#endif
-#if defined(GL_LINES)
-		lines = GL_LINES,
-#endif
-#if defined(GL_LINE_STRIP_ADJACENCY)
-		line_strip_adjacency = GL_LINE_STRIP_ADJACENCY,
-#endif
-#if defined(GL_LINES_ADJACENCY)
-		lines_adjacency = GL_LINES_ADJACENCY,
-#endif
-#if defined(GL_TRIANGLE_STRIP)
-		triangle_strip = GL_TRIANGLE_STRIP,
-#endif
-#if defined(GL_TRIANGLE_FAN)
-		triangle_fan = GL_TRIANGLE_FAN,
-#endif
-#if defined(GL_TRIANGLES)
-		triangles = GL_TRIANGLES,
-#endif
-#if defined(GL_TRIANGLE_STRIP_ADJACENCY)
-		triangle_strip_adjacency = GL_TRIANGLE_STRIP_ADJACENCY,
-#endif
-#if defined(GL_TRIANGLES_ADJACENCY)
-		triangles_adjacency = GL_TRIANGLES_ADJACENCY,
-#endif
-#if defined(GL_PATCHES)
-		patches = GL_PATCHES,
-#endif
+		glDrawArrays(jc::to_underlying(_mode), static_cast<GLuint>(_first), static_cast<GLuint>(_count));
+	};
+	inline void draw_arrays(size_t _count, size_t _first = 0)
+	{
+		return draw_arrays(primitive::triangles, _count, _first);
 	};
 
-	inline void draw_arrays(primitive _mode, GLuint _count, GLuint _first = 0)
+	inline void draw_elements(primitive _mode, typecode _indiceType, size_t _count, size_t _first = 0)
 	{
-		glDrawArrays(jc::to_underlying(_mode), _first, _count);
+		glDrawElements(jc::to_underlying(_mode), static_cast<GLuint>(_first),
+			jc::to_underlying(_indiceType), reinterpret_cast<const void*>(_count));
+	};
+	inline void draw_elements(typecode _indiceType, size_t _count, size_t _first = 0)
+	{
+		return draw_elements(primitive::triangles, _indiceType, _count, _first);
+	};
+
+	inline void draw_arrays_instanced(primitive _mode, size_t _instanceCount, size_t _count, size_t _first = 0)
+	{
+		glDrawArraysInstanced(jc::to_underlying(_mode), static_cast<GLuint>(_first),
+			static_cast<GLuint>(_count), static_cast<GLuint>(_instanceCount));
+	};
+	inline void draw_arrays_instanced(size_t _instanceCount, size_t _count, size_t _first = 0)
+	{
+		return draw_arrays_instanced(primitive::triangles, _instanceCount, _count, _first);
+	};
+	
+	inline void draw_elements_instanced(primitive _mode, size_t _instanceCount, typecode _indiceType, size_t _count, size_t _first = 0)
+	{
+		glDrawElementsInstanced(jc::to_underlying(_mode), static_cast<GLuint>(_first), jc::to_underlying(_indiceType),
+			reinterpret_cast<const void*>(_count), static_cast<GLuint>(_instanceCount));
+	};
+	inline void draw_elements_instanced(size_t _instanceCount, typecode _indiceType, size_t _count, size_t _first = 0)
+	{
+		return draw_elements_instanced(primitive::triangles, _instanceCount, _indiceType, _count, _first);
+	};
+};
+#pragma endregion
+
+#pragma region VBO
+namespace jc::gl
+{
+	/**
+	 * @brief Resizes a vbo and assigns its contents.
+	 *
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBufferData.xhtml
+	 *
+	 * @param _target The target that the vbo is bound to.
+	 * @param _data The data to assign to the vbo.
+	 * @param _usage Buffer usage hint.
+	*/
+	template <std::ranges::contiguous_range RangeT>
+	inline void buffer_data(gl::vbo_target _target, const RangeT& _data, vbo_usage _usage = vbo_usage::static_draw)
+	{
+		glBufferData
+		(
+			jc::to_underlying(_target),
+			std::ranges::size(_data) * sizeof(jc::ranges::value_t<RangeT>),
+			std::ranges::data(_data),
+			jc::to_underlying(_usage)
+		);
+	};
+
+	/**
+	 * @brief Resizes a vbo and clears its data.
+	 *
+	 * Buffer data will be unitialized!
+	 *
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBufferData.xhtml
+	 *
+	 * @param _target The target that the vbo is bound to.
+	 * @param _elementCount Number of elements to allocate space for.
+	 * @param _usage Buffer usage hint.
+	*/
+	template <typename ElementT = std::byte>
+	inline void resize_buffer(gl::vbo_target _target, size_t _elementCount, vbo_usage _usage = vbo_usage::static_draw)
+	{
+		glBufferData(jc::to_underlying(_target), _elementCount * sizeof(ElementT), nullptr, jc::to_underlying(_usage));
+	};
+
+	/**
+	 * @brief Resizes a vbo and assigns its contents.
+	 *
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBufferData.xhtml
+	 *
+	 * @param _target The target that the vbo is bound to.
+	 * @param _data The data to assign to the vbo.
+	 * @param _usage Buffer usage hint.
+	*/
+	template <std::ranges::contiguous_range RangeT>
+	inline void buffer_subdata(gl::vbo_target _target, const RangeT& _data, size_t _offset = 0)
+	{
+		glBufferSubData
+		(
+			jc::to_underlying(_target),
+			_offset * sizeof(jc::ranges::value_t<RangeT>),
+			jc::ranges::distance(_data) * sizeof(jc::ranges::value_t<RangeT>),
+			std::ranges::data(_data)
+		);
 	};
 
 
+#if GL_VERSION_4_5
 
+	/**
+	 * @brief Resizes a vbo and assigns its contents.
+	 *
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBufferData.xhtml
+	 *
+	 * @param _vbo The vbo to buffer data into.
+	 * @param _data The data to assign to the vbo.
+	 * @param _usage Buffer usage hint.
+	*/
+	template <std::ranges::contiguous_range RangeT>
+	inline void buffer_data(const vbo_id& _vbo, const RangeT& _data, vbo_usage _usage = vbo_usage::static_draw)
+	{
+		JCLIB_ASSERT(_vbo);
+		glNamedBufferData
+		(
+			_vbo.get(),
+			std::ranges::size(_data) * sizeof(jc::ranges::value_t<RangeT>),
+			std::ranges::data(_data),
+			jc::to_underlying(_usage)
+		);
+	};
+
+	/**
+	 * @brief Resizes a vbo and clears its data.
+	 * 
+	 * Buffer data will be unitialized!
+	 * 
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBufferData.xhtml
+	 * 
+	 * @param _vbo The vbo to resize.
+	 * @param _elementCount Number of elements to allocate space for.
+	 * @param _usage Buffer usage hint.
+	*/
+	template <typename ElementT = std::byte>
+	inline void resize_buffer(const vbo_id& _vbo, size_t _elementCount, vbo_usage _usage = vbo_usage::static_draw)
+	{
+		JCLIB_ASSERT(_vbo);
+		glNamedBufferData(_vbo.get(), _elementCount * sizeof(ElementT), nullptr, jc::to_underlying(_usage));
+	};
+
+	/**
+	 * @brief Resizes a vbo and assigns its contents.
+	 *
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBufferData.xhtml
+	 *
+	 * @param _vbo The vbo to buffer data into.
+	 * @param _data The data to assign to the vbo.
+	 * @param _usage Buffer usage hint.
+	*/
+	template <std::ranges::contiguous_range RangeT>
+	inline void buffer_subdata(const vbo_id& _vbo, const RangeT& _data, size_t _offset = 0)
+	{
+		JCLIB_ASSERT(_vbo);
+		glNamedBufferSubData
+		(
+			_vbo.get(),
+			_offset * sizeof(jc::ranges::value_t<RangeT>),
+			jc::ranges::distance(_data) * sizeof(jc::ranges::value_t<RangeT>),
+			std::ranges::data(_data)
+		);
+	};
+
+#endif
+
+};
+#pragma endregion
+
+#pragma region SHADER
+namespace jc::gl
+{
+
+	/**
+	 * @brief Sets the source code for an opengl shader object
+	 *
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glShaderSource.xhtml
+	 *
+	 * @param _shader Shader to set source of
+	 * @param _source Source code string
+	*/
+	inline void set_shader_source(const shader_id& _shader, std::string_view _source)
+	{
+		JCLIB_ASSERT(_shader);
+		std::array<const GLchar*, 1> _stringPtrs{ _source.data() };
+		std::array<GLsizei, 1>  _stringLengths{ _source.size() };
+		glShaderSource(_shader.get(), _stringPtrs.size(), _stringPtrs.data(), _stringLengths.data());
+	};
+
+	/**
+	 * @brief Gets the compile status for a shader
+	 * @param _shader Shader to get status of
+	 * @return Compile status value
+	*/
+	inline bool get_compile_status(const shader_id& _shader)
+	{
+		GLint _status = 0;
+		glGetShaderiv(_shader.get(), GL_COMPILE_STATUS, &_status);
+		return _status == GL_TRUE;
+	};
+
+	/**
+	 * @brief Compiles a shader and returns the compile status
+	 * @param _shader Shader to compile
+	 * @return True on good compile, false otherwise
+	*/
+	inline bool compile(const shader_id& _shader)
+	{
+		glCompileShader(_shader.get());
+		return get_compile_status(_shader);
+	};
+
+	/**
+	 * @brief Compiles a shader using the provided source and returns the compile status
+	 * @param _shader Shader to compile
+	 * @param _source Shader source code
+	 * @return True on good compile, false otherwise
+	*/
+	inline bool compile(const shader_id& _shader, const std::string_view _source)
+	{
+		set_shader_source(_shader, _source);
+		return compile(_shader);
+	};
+
+	/**
+	 * @brief Gets the shader info log string
+	 * @param _shader Shader to get info log of
+	 * @return Info log string
+	*/
+	inline std::string get_info_log(const shader_id& _shader)
+	{
+		GLint _infoLogLength{};
+		glGetShaderiv(_shader.get(), GL_INFO_LOG_LENGTH, &_infoLogLength);
+
+		std::string _infoLogData(static_cast<size_t>(_infoLogLength), '\0');
+		GLint _actualInfoLogLength{};
+		glGetShaderInfoLog(_shader.get(), _infoLogData.size(), &_actualInfoLogLength, _infoLogData.data());
+
+		_infoLogData.resize(static_cast<size_t>(_actualInfoLogLength));
+		return _infoLogData;
+	};
+
+};
+#pragma endregion
+
+#pragma region PROGRAM_RESOURCE
+namespace jc::gl
+{
+	/**
+	 * @brief Queries information about a program's resources.
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetProgramResource.xhtml
+	 * Also See https://www.khronos.org/opengl/wiki/Program_Introspection#Interface_query
+	 * 
+	 * @param _program Program object to query. MUST NOT BE NULL!
+	 * @param _type The type for the resource being queried.
+	 * @param _index Index of the specific resource to query.
+	 * @param _params The list of parameters to query.
+	 * @param _values Output span where the parameter values are written to.
+	 * 
+	 * @return The number of values actually written into "_values".
+	*/
+	inline size_t get_resource(	const program_id& _program, resource_type _type, gl_unsigned_int _index,
+								std::span<const resource_parameter> _params, std::span<GLint> _values)
+	{
+		JCLIB_ASSERT(_program);
+
+		// Holds how many parameter values were actually read
+		gl_sizei _gotCount = 0;
+		
+		const auto _propData = reinterpret_cast<const std::underlying_type_t<resource_parameter>*>(_params.data());
+		glGetProgramResourceiv(
+			_program.get(), jc::to_underlying(_type), _index,
+			_params.size(), _propData,
+			_values.size(), &_gotCount, _values.data()
+		);
+		return static_cast<size_t>(_gotCount);
+	};
+
+	/**
+	 * @brief Queries an interface of a program.
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetProgramInterface.xhtml
+	 * Also See https://www.khronos.org/opengl/wiki/Program_Introspection#Interface_query
+	 * 
+	 * @param _program The program to query an interface of. MUST NOT BE NULL.
+	 * @param _type The type of the resource being queried.
+	 * @param _interface The interface to query.
+	 * 
+	 * @return Value of the interface specified.
+	*/
+	inline gl_int get_interface(const program_id& _program, resource_type _type, program_interface _interface)
+	{
+		JCLIB_ASSERT(_program);
+
+		// Get value
+		gl_int _out{};
+		glGetProgramInterfaceiv(_program.get(), jc::to_underlying(_type), jc::to_underlying(_interface), &_out);
+
+		return _out;
+	};
+
+	/**
+	 * @brief Gets the name of a program resource using its index.
+	 *
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetProgramResourceName.xhtml
+	 *
+	 * @param _program The program the resource is in.
+	 * @param _type The type of the resource being queried.
+	 * @param _index The index of the resource to get.
+	 * @param _nameBuffer The buffer to write the name to.
+	 *
+	 * @return The number of characters actually written.
+	*/
+	inline size_t get_resource_name(const program_id& _program, resource_type _type, GLuint _index, std::span<GLchar> _nameBuffer)
+	{
+		const auto _bufSize = static_cast<GLsizei>(_nameBuffer.size());
+		GLsizei _readCount = 0;
+		glGetProgramResourceName(_program.get(), jc::to_underlying(_type), _index, _bufSize, &_readCount, _nameBuffer.data());
+		return static_cast<size_t>(_readCount);
+	};
+
+	/**
+	 * @brief Gets the name of a program resource using its index.
+	 *
+	 * This overload allows the max name size to be pre-queried and passed in.
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetProgramResourceName.xhtml
+	 *
+	 * @param _program The program the resource is in.
+	 * @param _type The type of the resource being queried.
+	 * @param _index The index of the resource to get.
+	 * @param _maxLength The length of the name, usually gotten by using "get_resource()".
+	 *
+	 * @return The name of the resource.
+	*/
+	inline std::string get_resource_name(const program_id& _program, resource_type _type, GLuint _index, size_t _maxLength)
+	{
+		std::string _name(_maxLength, '\0');
+		const auto _size = get_resource_name(_program, _type, _index, std::span{ _name });
+		_name.resize(_size);
+		return _name;
+	};
+
+	/**
+	 * @brief Gets the name of a program resource using its index.
+	 *
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetProgramResourceName.xhtml
+	 *
+	 * @param _program The program the resource is in.
+	 * @param _type The type of the resource being queried.
+	 * @param _index The index of the resource to get.
+	 *
+	 * @return The name of the resource.
+	*/
+	inline std::string get_resource_name(const program_id& _program, resource_type _type, GLuint _index)
+	{
+		const auto _params = std::array{ gl::resource_parameter::name_length };
+		std::array<GLint, 1> _values{};
+		get_resource(_program, _type, _index, _params, _values);
+		return get_resource_name(_program, _type, _index, static_cast<size_t>(_values.front()));
+	};
+
+	/**
+	 * @brief Integer invariant for holding program uniform block locations
+	*/
+	struct uniform_block_location : public gl_impl::integer_invariant<GLuint, struct uniform_block_location_tag>
+	{
+	private:
+		using parent_type = gl_impl::integer_invariant<GLuint, struct uniform_block_location_tag>;
+	public:
+
+		/**
+		 * @brief Constructs the uniform block location using a program resource location
+		 * @param _location Uniform block location as a program resource
+		*/
+		constexpr uniform_block_location(const resource_location _location) :
+			parent_type{ _location.get() }
+		{};
+
+		using parent_type::parent_type;
+		using parent_type::operator=;
+	};
+
+	/**
+	 * @brief Gets the location of a program uniform block.
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetUniformBlockIndex.xhtml
+	 * 
+	 * @param _program Program ID, must not be null.
+	 * @param _name Name of the uniform block, must be null.
+	 * 
+	 * @return The uniform blocks location, or null if not found.
+	*/
+	inline jc::optional<uniform_block_location> get_uniform_block_index(const program_id& _program, const GLchar* _name)
+	{
+		JCLIB_ASSERT(_program);
+		JCLIB_ASSERT(_name);
+
+		if (const auto _location = glGetUniformBlockIndex(_program.get(), _name); _location != -1)
+		{
+			return uniform_block_location{ static_cast<GLuint>(_location) };
+		}
+		else
+		{
+			return nullopt;
+		};
+	};
+
+
+};
+#pragma endregion
+
+#pragma region PROGRAM
+namespace jc::gl
+{
+
+	/**
+	 * @brief Gets the program info log string
+	 * @param _program Program to get info log of
+	 * @return Info log string
+	*/
+	inline std::string get_info_log(const program_id& _program)
+	{
+		GLint _infoLogLength{};
+		glGetProgramiv(_program.get(), GL_INFO_LOG_LENGTH, &_infoLogLength);
+
+		std::string _infoLogData(static_cast<size_t>(_infoLogLength), '\0');
+		GLint _actualInfoLogLength{};
+		glGetProgramInfoLog(_program.get(), _infoLogData.size(), &_actualInfoLogLength, _infoLogData.data());
+
+		_infoLogData.resize(static_cast<size_t>(_actualInfoLogLength));
+		return _infoLogData;
+	};
+
+
+	/**
+	 * @brief Gets the link status for a program
+	 * @param _program Program to get status of
+	 * @return Link status value
+	*/
+	inline bool get_link_status(const program_id& _program)
+	{
+		GLint _status = 0;
+		glGetProgramiv(_program.get(), GL_LINK_STATUS, &_status);
+		return _status == GL_TRUE;
+	};
+
+	/**
+	 * @brief Links a program object
+	 * 
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glLinkProgram.xhtml
+	 * 
+	 * @param _program Program object to link
+	 * @return True on good link, false otherwise
+	*/
+	inline bool link(const program_id& _program)
+	{
+		glLinkProgram(_program.get());
+		return get_link_status(_program);
+	};
+
+	/**
+	 * @brief Attaches a shader to a program object
+	 * 
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glAttachShader.xhtml
+	 * 
+	 * @param _program Program to attach to
+	 * @param _shader Shader to attach to program
+	*/
+	inline void attach(const program_id& _program, const shader_id& _shader)
+	{
+		glAttachShader(_program.get(), _shader.get());
+	};
+
+	/**
+	 * @brief Detaches a shader from a program object
+	 *
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glDetachShader.xhtml
+	 *
+	 * @param _program Program to detach from
+	 * @param _shader Shader to detach from program
+	*/
+	inline void detach(const program_id& _program, const shader_id& _shader)
+	{
+		glDetachShader(_program.get(), _shader.get());
+	};
+
+	/**
+	 * @brief Attaches and links a program to some shaders, detaching the shaders before returning
+	 * @param _program Program to link and attach to
+	 * @param _shaders Shaders to link
+	 * @return True on good link, false otherwise
+	*/
+	template <jc::cx_range RangeT>
+	requires jc::cx_convertible_to<jc::ranges::const_reference_t<RangeT>, shader_id>
+	inline bool link(const program_id& _program, const RangeT& _shaders)
+	{
+		for (auto& _shader : _shaders)
+		{
+			attach(_program, _shader);
+		};
+
+		const auto _status = link(_program);
+		
+		for (auto& _shader : _shaders)
+		{
+			detach(_program, _shader);
+		};
+		
+		return _status;
+	};
 
 
 #pragma region SET_UNIFORM_FUNCTIONS
+	
+	/**
+	 * @brief Customization point for adding types that can be uploaded as uniforms
+	 * @tparam T Specialize this type to add the customization
+	 * @tparam Enable SFINAE specialization point
+	*/
+	template <typename T, typename Enable = void>
+	struct uniform_ftor;
 
 	inline void set_uniform(const program_id& _program, const uniform_location& _uniform, const gl_float& _data)
 	{
@@ -1105,28 +1318,31 @@ namespace jc::gl
 		glProgramUniform4d(_program.get(), _uniform.get(), _data0, _data1, _data2, _data3);
 	};
 	
-#pragma endregion SET_UNIFORM_FUNCTIONS
-
 	/**
-	 * @brief Bit flags for denoting shader stages in a program pipeline
+	 * @brief Sets a uniform value for a type with a uniform_ftor specialization implemented
+	 * @tparam T Type to set the uniform with
+	 * @tparam ...ArgTs Optional additional arguement types to pass to the uniform_ftor
+	 * @param _program Program to set uniform on
+	 * @param _uniform Uniform location to set
+	 * @param _value Value to upload
+	 * @param ..._args Optional additional arguements to pass to the uniform_ftor
+	 * @return Depends on uniform_ftor::set return type
 	*/
-	enum class shader_stage_bit : GLbitfield
+	template <typename T, typename... ArgTs>
+	inline auto set_uniform(const program_id& _program, const uniform_location& _uniform, const T& _value, ArgTs&&... _args) ->
+		decltype(uniform_ftor<T>::set
+		(
+			std::declval<const program_id&>(),
+			std::declval<const uniform_location&>(),
+			std::declval<const T&>(),
+			std::declval<ArgTs&&>()...
+		))
 	{
-		vertex = GL_VERTEX_SHADER_BIT,
-		fragment = GL_FRAGMENT_SHADER_BIT,
-		geometry = GL_GEOMETRY_SHADER_BIT,
-		all = GL_ALL_SHADER_BITS,
+		return uniform_ftor<T>::set(_program, _uniform, _value, std::forward<ArgTs>(_args)...);
 	};
 
-	constexpr shader_stage_bit operator|(shader_stage_bit lhs, shader_stage_bit rhs)
-	{
-		return static_cast<shader_stage_bit>(jc::to_underlying(lhs) | jc::to_underlying(rhs));
-	};
-	constexpr shader_stage_bit& operator|=(shader_stage_bit& lhs, shader_stage_bit rhs)
-	{
-		lhs = lhs | rhs;
-		return lhs;
-	};
+
+#pragma endregion SET_UNIFORM_FUNCTIONS
 
 	/**
 	 * @brief Gets the shader code for a pipeline from the stages of another program
@@ -1150,12 +1366,28 @@ namespace jc::gl
 	};
 
 };
-
+#pragma endregion
 
 #pragma region TEXTURE
 
 namespace jc::gl
 {
+
+	/**
+	 * @brief Sets the value of a texture parameter.
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glTexParameter.xhtml
+	 *
+	 * @param _texture Texture to modify.
+	 * @param _param Texture parameter to set.
+	 * @param _value The value to assign to the parameter.
+	*/
+	inline void set(texture_id _texture, texture_parameter _param, GLint _value)
+	{
+		glTextureParameteri(_texture.get(), jc::to_underlying(_param), _value);
+	};
+
+
 	/**
 	 * @brief Specifies the storage for a 1D texture
 	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glTexStorage1D.xhtml
@@ -1359,6 +1591,42 @@ namespace jc::gl
 
 };
 
-#pragma endregion TEXTURE
+#pragma endregion
+
+
+namespace jc::gl
+{
+	/**
+	 * @brief Opengl callback function signature
+	*/
+	using debug_callback_fn = void(APIENTRY*)
+	(
+		GLenum source,
+		GLenum type,
+		GLuint id,
+		GLenum severity,
+		GLsizei length,
+		const GLchar* message,
+		const void* userParam
+	);
+
+	inline void enable_debug_output()
+	{
+		glEnable(GL_DEBUG_OUTPUT);
+	};
+	inline void enable_debug_output_synchronous()
+	{
+		if (!glIsEnabled(GL_DEBUG_OUTPUT))
+		{
+			enable_debug_output();
+		};
+		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+	};
+
+	inline void set_debug_callback(debug_callback_fn _cb, void* _userParam)
+	{
+		glDebugMessageCallback(_cb, _userParam);
+	};
+};
 
 #endif

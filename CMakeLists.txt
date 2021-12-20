@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.18)
 project(jcopengl VERSION 0.1.0)
 
 
+
+
 add_library(${PROJECT_NAME} STATIC "source/source.cpp")
 target_include_directories(${PROJECT_NAME} PUBLIC "include" PRIVATE "source")
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
