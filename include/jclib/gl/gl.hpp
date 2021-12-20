@@ -6,6 +6,8 @@
 #include "globject.hpp"
 #include "glenum.hpp"
 
+#include <glad/glad.h>
+
 #include <jclib/type.h>
 #include <jclib/ranges.h>
 #include <jclib/concepts.h>

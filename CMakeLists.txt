@@ -13,7 +13,17 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
 	JCLIB_OPENGL_GL_VERSION_MAJOR=4 JCLIB_OPENGL_GL_VERSION_MINOR=5
 	JCLIB_OPENGL_CUSTOM_LOADER_V=false)
 
+
+
+#
+# Link the glad interface target
+#
+
+if (NOT TARGET glad)
+	message(FATAL_ERROR "please create an INTERFACE library target for glad")
+endif()
 target_link_libraries(${PROJECT_NAME} PUBLIC glad)
+
 
 # Find and link OpenGL
 #find_package(OpenGL "${__openglVersionMajor}.${__openglVersionMinor}" REQUIRED)
