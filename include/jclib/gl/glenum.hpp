@@ -368,6 +368,7 @@ namespace jc::gl
 		active_uniform_block_max_name_length = GL_ACTIVE_UNIFORM_BLOCK_MAX_NAME_LENGTH,
 		active_uniform_max_length = GL_ACTIVE_UNIFORM_MAX_LENGTH,
 		attached_shaders = GL_ATTACHED_SHADERS,
+		binary_length = GL_PROGRAM_BINARY_LENGTH,
 		delete_status = GL_DELETE_STATUS,
 		info_log_length = GL_INFO_LOG_LENGTH,
 		link_status = GL_LINK_STATUS,

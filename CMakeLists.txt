@@ -33,4 +33,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC glad)
 ADD_CMAKE_SUBDIRS_HERE()
 
 
+if (TARGET glm)
+	target_link_libraries(${PROJECT_NAME} PUBLIC glm)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC JCLIB_OPENGL_GLM_V=true)
+endif()
+
+
 add_library(jclib::gl ALIAS ${PROJECT_NAME})

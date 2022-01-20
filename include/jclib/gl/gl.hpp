@@ -19,6 +19,7 @@
 
 #include <span>
 #include <tuple>
+#include <array>
 #include <string>
 #include <format>
 #include <compare>
@@ -514,7 +515,7 @@ namespace jc::gl
 		}
 		else
 		{
-			return std::nullopt;
+			return jc::nullopt;
 		};
 	};
 
@@ -560,16 +561,45 @@ namespace jc::gl
 		using parent_type::parent_type;
 		using parent_type::operator=;
 	};
-	
 
-	inline void bind_vertex_buffer(vertex_binding_index _buffer, const vbo_id& _vbo, GLintptr _offsetBytes, GLsizei _strideBytes)
+	/**
+	 * @brief
+	 *
+	 * TODO: This comment
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBindVertexBuffer.xhtml
+	 *
+	 * @param _vao
+	 * @param _index
+	 * @param _vbo
+	 * @param _offsetBytes
+	 * @param _strideBytes
+	*/
+	inline void bind_vertex_buffer(const vao_id& _vao, vertex_binding_index _index, const vbo_id& _vbo, size_t _offsetBytes, size_t _strideBytes)
 	{
-		glBindVertexBuffer(_buffer.get(), _vbo.get(), _offsetBytes, _strideBytes);
+		glVertexArrayVertexBuffer(_vao.get(), _index.get(), _vbo.get(), static_cast<GLintptr>(_offsetBytes), static_cast<GLsizei>(_strideBytes));
 	};
 
-	inline void set_vertex_divisor(vertex_binding_index _buffer, GLuint _divisor)
+	/**
+	 * @brief 
+	 * 
+	 * TODO: This comment
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBindVertexBuffer.xhtml
+	 * 
+	 * @param _index
+	 * @param _vbo 
+	 * @param _offsetBytes 
+	 * @param _strideBytes 
+	*/
+	inline void bind_vertex_buffer(vertex_binding_index _index, const vbo_id& _vbo, size_t _offsetBytes, GLsizei _strideBytes)
 	{
-		glVertexBindingDivisor(_buffer.get(), _divisor);
+		glBindVertexBuffer(_index.get(), _vbo.get(), static_cast<GLintptr>(_offsetBytes), static_cast<GLsizei>(_strideBytes));
+	};
+
+	inline void set_vertex_divisor(vertex_binding_index _binding, GLuint _divisor)
+	{
+		glVertexBindingDivisor(_binding.get(), _divisor);
 	};
 	inline void set_vertex_divisor(vertex_attribute_index _attribute, GLuint _divisor)
 	{
@@ -906,8 +936,8 @@ namespace jc::gl
 
 	/**
 	 * @brief Resizes a vbo and assigns its contents.
-	 *
-	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBufferData.xhtml
+	 * 
+	 * https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBufferSubData.xhtml
 	 *
 	 * @param _vbo The vbo to buffer data into.
 	 * @param _data The data to assign to the vbo.
@@ -1147,6 +1177,26 @@ namespace jc::gl
 	};
 
 	/**
+	 * @brief Integer invariant for holding program uniform binding points
+	*/
+	struct uniform_binding_point : public gl_impl::integer_invariant<GLuint, struct uniform_binding_point_tag>
+	{
+	private:
+		using parent_type = gl_impl::integer_invariant<GLuint, struct uniform_binding_point_tag>;
+	public:
+
+		/**
+		 * @brief Constructs the uniform block location using a program resource location
+		 * @param _location Uniform block location as a program resource
+		*/
+		constexpr uniform_binding_point(const GLuint _index) :
+			parent_type{ _index }
+		{};
+
+		using parent_type::operator=;
+	};
+
+	/**
 	 * @brief Gets the location of a program uniform block.
 	 * 
 	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetUniformBlockIndex.xhtml
@@ -1171,6 +1221,67 @@ namespace jc::gl
 		};
 	};
 
+	/**
+	 * @brief Sets the buffer that a uniform block uses for its storage.
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glUniformBlockBinding.xhtml
+	 * 
+	 * @param _program The program the uniform block is in. Must not be null.
+	 * @param _index The index of the uniform block. See get_uniform_block_index.
+	 * @param _binding The binding point to assign the uniform block to use.
+	*/
+	inline void uniform_block_binding(const program_id& _program, const uniform_block_location& _index, const uniform_binding_point& _binding)
+	{
+		JCLIB_ASSERT(_program);
+		glUniformBlockBinding(_program.get(), _index.get(), _binding.get());
+	};
+
+
+	/**
+	 * @brief Gets the location of a program input resource.
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetAttribLocation.xhtml
+	 * 
+	 * @param _program Program to get attribute from, MUST NOT BE NULL.
+	 * @param _name Name of the attribute to get.
+	 * @return Index of the attribute on found, null otherwise.
+	*/
+	inline jc::optional<vertex_attribute_index> get_attribute_location(const program_id& _program, const GLchar* _name)
+	{
+		JCLIB_ASSERT(_program);
+		const auto _location = glGetAttribLocation(_program.get(), _name);
+		if (_location != -1) JCLIB_LIKELY
+		{
+			return vertex_attribute_index{ static_cast<vertex_attribute_index::value_type>(_location) };
+		}
+		else
+		{
+			return jc::null;
+		};
+	};
+
+	/**
+	 * @brief Gets the location of a program uniform.
+	 *
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetUniformLocation.xhtml
+	 *
+	 * @param _program Program to get uniformfrom, MUST NOT BE NULL.
+	 * @param _name Name of the uniform to get.
+	 * @return Index of the uniform on found, null if not found.
+	*/
+	inline jc::optional<uniform_location> get_uniform_location(const program_id& _program, const GLchar* _name)
+	{
+		JCLIB_ASSERT(_program);
+		const auto _location = glGetUniformLocation(_program.get(), _name);
+		if (_location != -1) JCLIB_LIKELY
+		{
+			return uniform_location{ static_cast<uniform_location::value_type>(_location) };
+		}
+		else
+		{
+			return jc::null;
+		};
+	};
 
 };
 #pragma endregion
@@ -1284,7 +1395,7 @@ namespace jc::gl
 	 * @tparam Enable SFINAE specialization point
 	*/
 	template <typename T, typename Enable = void>
-	struct uniform_ftor;
+	struct uniform_traits;
 
 	inline void set_uniform(const program_id& _program, const uniform_location& _uniform, const gl_float& _data)
 	{
@@ -1321,18 +1432,18 @@ namespace jc::gl
 	};
 	
 	/**
-	 * @brief Sets a uniform value for a type with a uniform_ftor specialization implemented
+	 * @brief Sets a uniform value for a type with a uniform_traits specialization implemented
 	 * @tparam T Type to set the uniform with
-	 * @tparam ...ArgTs Optional additional arguement types to pass to the uniform_ftor
+	 * @tparam ...ArgTs Optional additional arguement types to pass to the uniform_traits
 	 * @param _program Program to set uniform on
 	 * @param _uniform Uniform location to set
 	 * @param _value Value to upload
-	 * @param ..._args Optional additional arguements to pass to the uniform_ftor
-	 * @return Depends on uniform_ftor::set return type
+	 * @param ..._args Optional additional arguements to pass to the uniform_traits
+	 * @return Depends on uniform_traits::set return type
 	*/
 	template <typename T, typename... ArgTs>
 	inline auto set_uniform(const program_id& _program, const uniform_location& _uniform, const T& _value, ArgTs&&... _args) ->
-		decltype(uniform_ftor<T>::set
+		decltype(uniform_traits<T>::set
 		(
 			std::declval<const program_id&>(),
 			std::declval<const uniform_location&>(),
@@ -1340,7 +1451,7 @@ namespace jc::gl
 			std::declval<ArgTs&&>()...
 		))
 	{
-		return uniform_ftor<T>::set(_program, _uniform, _value, std::forward<ArgTs>(_args)...);
+		return uniform_traits<T>::set(_program, _uniform, _value, std::forward<ArgTs>(_args)...);
 	};
 
 
@@ -1366,6 +1477,127 @@ namespace jc::gl
 	{
 		return use_program_stages(_pipeline, _program, shader_stage_bit::all);
 	};
+
+
+	/**
+	 * @brief Type returned by get_program_binary
+	*/
+	struct program_binary_result
+	{
+		/**
+		 * @brief The size of the binary data written in bytes.
+		*/
+		size_t size;
+
+		/**
+		 * @brief The format of the binary data.
+		*/
+		GLenum format;
+	};
+
+	/**
+	 * @brief Gets the binary data of a linked program object.
+	 * 
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetProgramBinary.xhtml
+	 *
+	 * @param _program The program to get binary of, must not be null.
+	 * @param _binary Buffer to write the binary data to.
+	 * 
+	 * @return The size of the data written and the format for the binary.
+	*/
+	inline program_binary_result get_program_binary(const program_id& _program, std::span<std::byte> _binary)
+	{
+		JCLIB_ASSERT(_program);
+		const auto _bufferSize = static_cast<GLsizei>(_binary.size());
+		GLsizei _length = 0;
+		GLenum _format{};
+		glGetProgramBinary(_program.get(), _bufferSize, &_length, &_format, _binary.data());
+		return program_binary_result{ static_cast<size_t>(_length), _format };
+	};
+
+	/**
+	 * @brief Type returned when getting a program's binary data without specifying a buffer.
+	*/
+	struct program_binary
+	{
+		/**
+		 * @brief The raw binary data.
+		*/
+		std::unique_ptr<std::byte[]> data;
+
+		/**
+		 * @brief The size of the binary data in bytes.
+		*/
+		size_t size;
+
+		/**
+		 * @brief The format of the binary data.
+		*/
+		GLenum format;
+	};
+
+	/**
+	 * @brief Gets the binary data of a linked program object.
+	 *
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glGetProgramBinary.xhtml
+	 *
+	 * @param _program The program to get binary of, must not be null.
+	 *
+	 * @return The binary data for the program.
+	*/
+	inline program_binary get_program_binary(const program_id& _program)
+	{
+		JCLIB_ASSERT(_program);
+
+		// Allocate space for the binary data
+		program_binary _binary{};
+		const auto _bufferSize = static_cast<size_t>(get(_program, program_parameter::binary_length));
+		_binary.data = std::make_unique<std::byte[]>(_bufferSize);
+		
+		// Get the program binary using the base overload
+		const auto _result = get_program_binary(_program, std::span{ _binary.data.get(), _bufferSize });
+		_binary.format = _result.format;
+		_binary.size = _result.size;
+
+		// All done
+		return _binary;
+	};
+
+#if GL_VERSION_4_1
+	/**
+	 * @brief Sets the binary data of a linked program object.
+	 *
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glProgramBinary.xhtml
+	 *
+	 * @param _program The program to set the binary of, MUST NOT BE NULL.
+	 * @param _binary The binary to set.
+	 * @param _format The format of the binary data.
+	 *
+	 * @return True on good set, false otherwise. (same as get_link_statusx)
+	*/
+	inline bool set_program_binary(const program_id& _program, std::span<const std::byte> _binary, GLenum _format)
+	{
+		JCLIB_ASSERT(_program);
+		glProgramBinary(_program.get(), _format, _binary.data(), static_cast<GLsizei>(_binary.size_bytes()));
+		return get_link_status(_program);
+	};
+
+	/**
+	 * @brief Sets the binary data of a linked program object.
+	 *
+	 * See https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glProgramBinary.xhtml
+	 *
+	 * @param _program The program to set the binary of, MUST NOT BE NULL.
+	 * @param _binary A complete binary data structure as returned by get_program_binary().
+	 *
+	 * @return True on good set, false otherwise. (same as get_link_statusx)
+	*/
+	inline bool set_program_binary(const program_id& _program, const program_binary& _binary)
+	{
+		const auto _data = std::span<const std::byte>{ _binary.data.get(), _binary.size };
+		return set_program_binary(_program, _data, _binary.format);
+	};
+#endif
 
 };
 #pragma endregion
@@ -1630,5 +1862,92 @@ namespace jc::gl
 		glDebugMessageCallback(_cb, _userParam);
 	};
 };
+
+
+
+
+#pragma region GLM_EXTENSION
+#if JCLIB_OPENGL_GLM_V
+
+#include <glm/matrix.hpp>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+
+namespace jc::gl
+{
+	// floating point vector uniforms
+
+	template <>
+	struct uniform_traits<glm::vec2>
+	{
+		using type = glm::vec2;
+		static void set(const program_id& _program, const uniform_location& _uniform, const type& _value)
+		{
+			glProgramUniform2fv(_program.get(), _uniform.get(), 1, &_value[0]);
+		};
+	};
+
+	template <>
+	struct uniform_traits<glm::vec3>
+	{
+		using type = glm::vec3;
+		static void set(const program_id& _program, const uniform_location& _uniform, const type& _value)
+		{
+			glProgramUniform3fv(_program.get(), _uniform.get(), 1, &_value[0]);
+		};
+	};
+
+	template <>
+	struct uniform_traits<glm::vec4>
+	{
+		using type = glm::vec4;
+		static void set(const program_id& _program, const uniform_location& _uniform, const type& _value)
+		{
+			glProgramUniform4fv(_program.get(), _uniform.get(), 1, &_value[0]);
+		};
+	};
+
+
+
+	// floating point matrix uniforms
+
+	template <>
+	struct uniform_traits<glm::mat2>
+	{
+		using type = glm::mat2;
+		static void set(const program_id& _program, const uniform_location& _uniform, const type& _value, bool _transpose = false)
+		{
+			glProgramUniformMatrix2fv(_program.get(), _uniform.get(), 1, _transpose, &_value[0][0]);
+		};
+	};
+	
+	template <>
+	struct uniform_traits<glm::mat3>
+	{
+		using type = glm::mat3;
+		static void set(const program_id& _program, const uniform_location& _uniform, const type& _value, bool _transpose = false)
+		{
+			glProgramUniformMatrix3fv(_program.get(), _uniform.get(), 1, _transpose, &_value[0][0]);
+		};
+	};
+	
+	template <>
+	struct uniform_traits<glm::mat4>
+	{
+		using type = glm::mat4;
+		static void set(const program_id& _program, const uniform_location& _uniform, const type& _value, bool _transpose = false)
+		{
+			glProgramUniformMatrix4fv(_program.get(), _uniform.get(), 1, _transpose, &_value[0][0]);
+		};
+	};
+
+};
+
+#endif
+#pragma endregion
+
+// This will be the actual namespace exposed.
+namespace gl = jc::gl;
 
 #endif
