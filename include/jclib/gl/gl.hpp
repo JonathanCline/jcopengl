@@ -21,7 +21,6 @@
 #include <tuple>
 #include <array>
 #include <string>
-#include <format>
 #include <compare>
 #include <iostream>
 #include <charconv>
